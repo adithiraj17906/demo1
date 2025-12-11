@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dynamic Multi-Event Countdown</title>
+<style>
+   body {
+    font-family: Arial, sans-serif;
+    background: #f0f2f5;
+    margin: 0; padding: 20px;
+  }
+  h1 {
+    text-align: center;
+  }
+  form {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    max-width: 600px;
+    margin: 0 auto 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
+  label {
+    display: block;
+    margin: 12px 0 6px;
+  }
+  input[type=text],
+  input[type=datetime-local],
+  input[type=email],
+  textarea,
+  select {
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+  button {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    margin-top: 15px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  button:hover {
+    background: #0056b3;
+  }
+  #events-container {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .event-card {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .event-info {
+    flex-grow: 1;
+  }
+  .event-title {
+    font-weight: bold;
+    font-size: 1.2em;
+  }
+  .event-desc {
+    font-style: italic;
+    margin: 5px 0;
+  }
+  .countdown {
+    font-family: monospace;
+    font-size: 1.1em;
+    margin-top: 5px;
+  }
+  .category {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  .btn-group button {
+    background: #dc3545;
+    margin-left: 5px;
+    padding: 6px 10px;
+    font-size: 0.9em;
+  }
+  .btn-group button.edit-btn {
+    background: #28a745;
+  }
+  .btn-group button:hover {
+    opacity: 0.85;
+  }
+  .reminder-email {
+    font-size: 0.85em;
+    color: #555;
+    margin-top: 4px;
+  }
+  .celebration {
+    color: #28a745;
+    font-weight: bold;
+  }
+  /* Toast styles */
+  #toast {
+    visibility: hidden;
+    min-width: 280px;
+    background-color: #333;
+    color: white;
+    text-align: center;
+    border-radius: 8px;
+    padding: 14px;
+    position: fixed;
+    z-index: 1000;
+    left: 50%;
+    bottom: 30px;
+    transform: translateX(-50%);
+    font-size: 17px;
+  }
+  #toast.show {
+    visibility: visible;
+    animation: fadein 0.5s, fadeout 0.5s 3s;
+  }
+  @keyframes fadein {
+    from {bottom: 10px; opacity: 0;}
+    to {bottom: 30px; opacity: 1;}
+  }
+  @keyframes fadeout {
+    from {bottom: 30px; opacity: 1;}
+    to {bottom: 10px; opacity: 0;}
+  }
+</style>
+</head>
+<body>
+
+<h1>Dynamic Multi-Event Countdown</h1>
+
+<form id="event-form">
+  <label for="title">Event Title *</label>
+  <input type="text" id="title" name="title" required />
+
+  <label for="description">Event Description</label>
+  <textarea id="description" name="description" rows="3"></textarea>
+
+  <label for="datetime">Event Date and Time *</label>
+  <input type="datetime-local" id="datetime" name="datetime" required />
+
+  <label for="email">Email for Reminder</label>
+  <input type="email" id="email" name="email" placeholder="Optional" />
+
+  <label for="category">Event Category</label>
+  <select id="category" name="category" required>
+    <option value="birthday">Birthday 🎂</option>
+    <option value="meeting">Meeting 📅</option>
+    <option value="holiday">Holiday 🌴</option>
+    <option value="custom">Custom 📝</option>
+  </select>
+
+  <button type="submit">Add Event</button>
+</form>
+
+<div id="events-container"></div>
+
+<div id="toast"></div>
+<script>(() => {
+  const form = document.getElementById('event-form');
+  const eventsContainer = document.getElementById('events-container');
+  const toast = document.getElementById('toast');
+
+  let events = [];
+
+  const categoryData = {
+    birthday: { color: '#ff4081', icon: '🎂' },
+    meeting: { color: '#2196f3', icon: '📅' },
+    holiday: { color: '#4caf50', icon: '🌴' },
+    custom: { color: '#9c27b0', icon: '📝' }
+  };
+
+  function loadEvents() {
+    const saved = localStorage.getItem('countdownEvents');
+    if (saved) {
+      events = JSON.parse(saved).map(ev => {
+        ev.eventDate = new Date(ev.eventDate);
+        return ev;
+      });
+    }
+  }
+
+  function saveEvents() {
+    localStorage.setItem('countdownEvents', JSON.stringify(events));
+  }
+
+  function showToast(message) {
+    toast.textContent = message;
+    toast.className = 'show';
+    setTimeout(() => {
+      toast.className = toast.className.replace('show', '');
+    }, 3500);
+  }
+
+  function formatCountdown(diffMs) {
+    if (diffMs < 0) return "00 Days 00:00:00";
+
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(days).padStart(2,'0')} Days ` +
+           `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+  }
+
+  function renderEvents() {
+    eventsContainer.innerHTML = '';
+    if (events.length === 0) {
+      eventsContainer.innerHTML = '<p style="text-align:center;color:#666;">No events yet. Add some!</p>';
+      return;
+    }
+
+    events.forEach((ev, idx) => {
+      const card = document.createElement('div');
+      card.className = 'event-card';
+
+      const cat = categoryData[ev.category] || categoryData.custom;
+
+      const info = document.createElement('div');
+      info.className = 'event-info';
+
+      const categoryCircle = document.createElement('span');
+      categoryCircle.className = 'category';
+      categoryCircle.style.backgroundColor = cat.color;
+      categoryCircle.title = ev.category.charAt(0).toUpperCase() + ev.category.slice(1);
+      categoryCircle.textContent = cat.icon;
+
+      const titleLine = document.createElement('div');
+      titleLine.className = 'event-title';
+      titleLine.appendChild(categoryCircle);
+      titleLine.appendChild(document.createTextNode(ev.title));
+
+      const descLine = document.createElement('div');
+      descLine.className = 'event-desc';
+      descLine.textContent = ev.description || '';
+
+      const countdownLine = document.createElement('div');
+      countdownLine.className = 'countdown';
+      countdownLine.id = `countdown-${ev.id}`;
+
+      const emailLine = document.createElement('div');
+      emailLine.className = 'reminder-email';
+      emailLine.textContent = ev.email ? `Reminder Email: ${ev.email}` : '';
+
+      info.appendChild(titleLine);
+      if (ev.description) info.appendChild(descLine);
+      info.appendChild(countdownLine);
+      if (ev.email) info.appendChild(emailLine);
+
+      const btnGroup = document.createElement('div');
+      btnGroup.className = 'btn-group';
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Delete';
+      delBtn.title = 'Delete Event';
+      delBtn.addEventListener('click', () => {
+        if (confirm(`Are you sure you want to delete "${ev.title}"?`)) {
+          events.splice(idx, 1);
+          saveEvents();
+          renderEvents();
+        }
+      });
+
+      const editBtn = document.createElement('button');
+      editBtn.textContent = 'Edit';
+      editBtn.title = 'Edit Event';
+      editBtn.className = 'edit-btn';
+      editBtn.addEventListener('click', () => {
+        form.title.value = ev.title;
+        form.description.value = ev.description || '';
+        form.datetime.value = ev.eventDate.toISOString().slice(0, 16);
+        form.email.value = ev.email || '';
+        form.category.value = ev.category;
+
+        events.splice(idx, 1);
+        saveEvents();
+        renderEvents();
+      });
+
+      btnGroup.appendChild(editBtn);
+      btnGroup.appendChild(delBtn);
+
+      card.appendChild(info);
+      card.appendChild(btnGroup);
+      eventsContainer.appendChild(card);
+    });
+  }
+
+  function updateCountdowns() {
+    const now = new Date();
+
+    events.forEach(ev => {
+      const countdownEl = document.getElementById(`countdown-${ev.id}`);
+      if (!countdownEl) return;
+
+      const diff = ev.eventDate - now;
+      if (diff <= 0) {
+        countdownEl.innerHTML = `<span class="celebration">${ev.title} is happening now!</span>`;
+      } else {
+        countdownEl.textContent = formatCountdown(diff);
+      }
+    });
+  }
+
+  function generateId() {
+    return '_' + Math.random().toString(36).substr(2, 9);
+  }
+
+  function checkReminders() {
+    const now = new Date();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    events.forEach(ev => {
+      if (!ev.email) return;
+      const diffMs = ev.eventDate - now;
+
+      if (diffMs > oneDayMs - 60000 && diffMs < oneDayMs + 60000) {
+        if (!ev.reminded) {
+          console.log(`Reminder: '${ev.title}' is happening tomorrow. Email sent to: ${ev.email}`);
+          showToast(`Reminder: '${ev.title}' is tomorrow! Email sent to: ${ev.email}`);
+          ev.reminded = true;
+          saveEvents();
+        }
+      }
+    });
+  }
+
+  function validateForm(data) {
+    if (!data.title.trim()) {
+      alert('Event Title is required.');
+      return false;
+    }
+    if (!data.datetime) {
+      alert('Event Date and Time is required.');
+      return false;
+    }
+    const eventDate = new Date(data.datetime);
+    if (isNaN(eventDate.getTime())) {
+      alert('Invalid date/time.');
+      return false;
+    }
+    if (eventDate <= new Date()) {
+      alert('Event Date and Time must be in the future.');
+      return false;
+    }
+    if (data.email && !validateEmail(data.email)) {
+      alert('Invalid email address.');
+      return false;
+    }
+    if (!categoryData[data.category]) {
+      alert('Invalid event category.');
+      return false;
+    }
+    return true;
+  }
+
+  function validateEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  }
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const formData = {
+      title: form.title.value.trim(),
+      description: form.description.value.trim(),
+      datetime: form.datetime.value,
+      email: form.email.value.trim(),
+      category: form.category.value
+    };
+
+    if (!validateForm(formData)) return;
+
+    const newEvent = {
+      id: generateId(),
+      title: formData.title,
+      description: formData.description,
+      eventDate: new Date(formData.datetime),
+      email: formData.email || null,
+      category: formData.category,
+      reminded: false
+    };
+
+    events.push(newEvent);
+    saveEvents();
+    renderEvents();
+    form.reset();
+  });
+
+  function init() {
+    loadEvents();
+    renderEvents();
+    setInterval(() => {
+      updateCountdowns();
+      checkReminders();
+    }, 1000);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
